@@ -1,0 +1,12 @@
+torch
+transformers
+accelerate
+safetensors
+PyQt6
+matplotlib
+numpy
+pandas
+sqlalchemy
+reportlab
+tqdm
+rich
