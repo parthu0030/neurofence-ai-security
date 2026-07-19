@@ -39,6 +39,7 @@ class DashboardWindow(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._build_ui()
+        self._connect_signals()
 
     # ── Layout construction ────────────────────────────────────────
 
@@ -126,6 +127,35 @@ class DashboardWindow(QWidget):
 
         return container
 
+    # ── Signal wiring ──────────────────────────────────────────────
+
+    def _connect_signals(self) -> None:
+        """Wire child-widget signals to the upload handler."""
+        self.quick_scan.upload_requested.connect(self._handle_upload)
+
+    # ── Upload handler ─────────────────────────────────────────────
+
+    def _handle_upload(self) -> None:
+        """Orchestrate the model upload pipeline and update the UI."""
+        from services.model_upload_service import ModelUploadService
+
+        service = ModelUploadService()
+        record = service.process_upload(parent=self)
+
+        if record is None:
+            # User cancelled the dialog or file was invalid
+            return
+
+        # Update the right-side info panel with model metadata
+        self.info_panel.update_model_info(record)
+
+        # Enable the Scan button and show a success message
+        self.quick_scan.enable_scan_button()
+        self.quick_scan.show_success(record.filename)
+
+        # Flash a success message in the bottom status bar
+        self.status_bar.set_message("✔ Model uploaded successfully.")
+
     # ── Stat cards builder ─────────────────────────────────────────
 
     @staticmethod
@@ -148,3 +178,4 @@ class DashboardWindow(QWidget):
             row.addWidget(card)
 
         return row
+

@@ -9,13 +9,14 @@ Contains four reusable card components:
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
@@ -93,6 +94,9 @@ class StatCard(QFrame):
 class QuickScanCard(QFrame):
     """Large card with upload button, drag-drop zone, and disabled Scan button."""
 
+    # Emitted when the upload button is clicked.
+    upload_requested = pyqtSignal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("QuickScanCard")
@@ -108,11 +112,12 @@ class QuickScanCard(QFrame):
         layout.addWidget(title)
 
         # Upload button (centred)
-        upload_btn = QPushButton("📤  Upload Model")
-        upload_btn.setObjectName("UploadBtn")
-        upload_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        upload_btn.setFixedHeight(48)
-        layout.addWidget(upload_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.upload_btn = QPushButton("📤  Upload Model")
+        self.upload_btn.setObjectName("UploadBtn")
+        self.upload_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.upload_btn.setFixedHeight(48)
+        self.upload_btn.clicked.connect(self.upload_requested.emit)
+        layout.addWidget(self.upload_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Drag & Drop zone
         drop_zone = QFrame()
@@ -150,14 +155,50 @@ class QuickScanCard(QFrame):
         )
         layout.addLayout(fmt_row)
 
+        # Success label (hidden by default)
+        self._success_label = QLabel("")
+        self._success_label.setObjectName("SuccessLabel")
+        self._success_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._success_label.hide()
+        layout.addWidget(self._success_label)
+
         layout.addSpacing(4)
 
         # Scan button (disabled — no backend yet)
-        scan_btn = QPushButton("🔍  Scan Model")
-        scan_btn.setObjectName("ScanBtn")
-        scan_btn.setEnabled(False)
-        scan_btn.setFixedHeight(44)
-        layout.addWidget(scan_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.scan_btn = QPushButton("🔍  Scan Model")
+        self.scan_btn.setObjectName("ScanBtn")
+        self.scan_btn.setEnabled(False)
+        self.scan_btn.setFixedHeight(44)
+        self.scan_btn.clicked.connect(self._on_scan_clicked)
+        layout.addWidget(self.scan_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    # ── Public API ────────────────────────────────────────────────────
+
+    def enable_scan_button(self) -> None:
+        """Enable the Scan button after a valid model is uploaded."""
+        self.scan_btn.setEnabled(True)
+        self.scan_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Force style re-evaluation for the enabled state
+        self.scan_btn.style().unpolish(self.scan_btn)
+        self.scan_btn.style().polish(self.scan_btn)
+        self.scan_btn.update()
+
+    def show_success(self, filename: str) -> None:
+        """Display a success message below the format badges."""
+        self._success_label.setText(f"✔ Model uploaded successfully.")
+        self._success_label.show()
+
+    # ── Private helpers ───────────────────────────────────────────────
+
+    @staticmethod
+    def _on_scan_clicked() -> None:
+        """Placeholder action for the Scan button."""
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setWindowTitle("Scan Module")
+        msg.setText("Scanning module coming in Day 4.")
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -250,6 +291,35 @@ class InfoPanelCard(QFrame):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(16)
 
+        # ── Model Information (populated after upload) ──
+        layout.addWidget(self._section_title("MODEL INFORMATION"))
+
+        self._model_info_labels: dict[str, QLabel] = {}
+        for key in (
+            "Model Name",
+            "Filename",
+            "Extension",
+            "Size",
+            "Created",
+            "Modified",
+            "Path",
+        ):
+            row, val_label = self._model_info_row(key)
+            self._model_info_labels[key] = val_label
+            layout.addLayout(row)
+
+        # SHA-256 gets its own monospace label
+        sha_header = QLabel("SHA-256")
+        sha_header.setObjectName("InfoKey")
+        layout.addWidget(sha_header)
+
+        self._sha_label = QLabel("—")
+        self._sha_label.setObjectName("Sha256Value")
+        self._sha_label.setWordWrap(True)
+        layout.addWidget(self._sha_label)
+
+        layout.addWidget(self._separator())
+
         # ── Project Information ──
         layout.addWidget(self._section_title("PROJECT INFORMATION"))
         layout.addLayout(self._kv_row("Application", "NeuroFence AI Security"))
@@ -282,6 +352,26 @@ class InfoPanelCard(QFrame):
             QSpacerItem(0, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         )
 
+    # ── Public API ────────────────────────────────────────────────
+
+    def update_model_info(self, record) -> None:
+        """Populate the MODEL INFORMATION section from a ModelRecord."""
+        from utils.file_metadata import _humanize_size, _derive_model_name
+
+        self._model_info_labels["Model Name"].setText(
+            _derive_model_name(record.filename)
+        )
+        self._model_info_labels["Filename"].setText(record.filename)
+        self._model_info_labels["Extension"].setText(record.extension)
+        self._model_info_labels["Size"].setText(_humanize_size(record.size))
+        self._model_info_labels["Created"].setText(record.created_at)
+        self._model_info_labels["Modified"].setText(record.modified_at)
+        self._model_info_labels["Path"].setText(record.filepath)
+        self._model_info_labels["Path"].setToolTip(record.filepath)
+
+        self._sha_label.setText(record.sha256)
+        self._sha_label.setToolTip(record.sha256)
+
     # ── Helper builders ────────────────────────────────────────────
 
     @staticmethod
@@ -304,6 +394,23 @@ class InfoPanelCard(QFrame):
         )
         row.addWidget(v)
         return row
+
+    @staticmethod
+    def _model_info_row(key: str) -> tuple[QHBoxLayout, QLabel]:
+        """Build a key-value row and return both the layout and the value label."""
+        row = QHBoxLayout()
+        k = QLabel(key)
+        k.setObjectName("InfoKey")
+        v = QLabel("—")
+        v.setObjectName("ModelInfoValue")
+        v.setAlignment(Qt.AlignmentFlag.AlignRight)
+        v.setWordWrap(True)
+        row.addWidget(k)
+        row.addItem(
+            QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        )
+        row.addWidget(v)
+        return row, v
 
     @staticmethod
     def _status_row(key: str, value: str, color: str) -> QHBoxLayout:
@@ -331,3 +438,4 @@ class InfoPanelCard(QFrame):
         sep.setStyleSheet(f"color: {_T.border};")
         sep.setFixedHeight(1)
         return sep
+

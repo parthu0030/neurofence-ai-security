@@ -9,7 +9,7 @@ from __future__ import annotations
 import platform
 import sys
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -42,13 +42,13 @@ class StatusBarWidget(QFrame):
         layout.setSpacing(24)
 
         # Ready indicator
-        dot = QLabel("●")
-        dot.setObjectName("StatusBarReady")
-        layout.addWidget(dot)
+        self._status_dot = QLabel("●")
+        self._status_dot.setObjectName("StatusBarReady")
+        layout.addWidget(self._status_dot)
 
-        ready = QLabel("Ready")
-        ready.setObjectName("StatusBarReady")
-        layout.addWidget(ready)
+        self._status_text = QLabel("Ready")
+        self._status_text.setObjectName("StatusBarReady")
+        layout.addWidget(self._status_text)
 
         layout.addWidget(self._divider())
 
@@ -86,3 +86,19 @@ class StatusBarWidget(QFrame):
         div = QLabel("|")
         div.setStyleSheet("color: #2a3550; font-size: 11px;")
         return div
+
+    # ── Public API ────────────────────────────────────────────────
+
+    def set_message(self, text: str, timeout_ms: int = 5_000) -> None:
+        """Display *text* in the status bar, reverting after *timeout_ms*."""
+        self._status_text.setText(text)
+        self._status_text.setStyleSheet("color: #22c55e; font-size: 11px; font-weight: 600;")
+        QTimer.singleShot(timeout_ms, self._reset_status)
+
+    def _reset_status(self) -> None:
+        """Restore the default 'Ready' status."""
+        self._status_text.setText("Ready")
+        self._status_text.setStyleSheet("")
+        self._status_text.setObjectName("StatusBarReady")
+        self._status_text.style().unpolish(self._status_text)
+        self._status_text.style().polish(self._status_text)

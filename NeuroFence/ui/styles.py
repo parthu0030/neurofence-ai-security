@@ -264,6 +264,23 @@ QPushButton#ScanBtn {{
     font-size: 14px;
     font-weight: 600;
 }}
+/* Scan button — enabled state */
+QPushButton#ScanBtn:enabled {{
+    background-color: {_T.success};
+    color: #ffffff;
+    border: 1px solid {_T.success};
+}}
+QPushButton#ScanBtn:enabled:hover {{
+    background-color: #16a34a;
+    border-color: #16a34a;
+}}
+
+/* Upload success message */
+#SuccessLabel {{
+    color: {_T.success};
+    font-size: 12px;
+    font-weight: 600;
+}}
 """
 
 
@@ -351,6 +368,17 @@ INFO_PANEL_STYLESHEET: str = f"""
 #StatusDot {{
     color: {_T.success};
     font-size: 10px;
+}}
+#ModelInfoValue {{
+    color: {_T.text_primary};
+    font-size: 11px;
+    font-weight: 500;
+}}
+#Sha256Value {{
+    color: {_T.accent_light};
+    font-size: 10px;
+    font-family: "Menlo", "Courier New", monospace;
+    font-weight: 400;
 }}
 """
 

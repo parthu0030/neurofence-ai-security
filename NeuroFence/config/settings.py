@@ -26,6 +26,10 @@ class AppConfig:
     WINDOW_MIN_WIDTH: int = 1200
     WINDOW_MIN_HEIGHT: int = 700
 
+    # ── Model upload ────────────────────────────────────────────────
+    ALLOWED_EXTENSIONS: tuple[str, ...] = (".safetensors", ".bin", ".pt")
+    DB_NAME: str = "neurofence.db"
+
 
 @dataclass(frozen=True)
 class ThemeColors:
