@@ -92,10 +92,12 @@ class StatCard(QFrame):
 
 
 class QuickScanCard(QFrame):
-    """Large card with upload button, drag-drop zone, and disabled Scan button."""
+    """Large card with upload button, drag-drop zone, and Scan button."""
 
     # Emitted when the upload button is clicked.
     upload_requested = pyqtSignal()
+    # Emitted when the scan button is clicked (after a model is uploaded).
+    scan_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -164,12 +166,12 @@ class QuickScanCard(QFrame):
 
         layout.addSpacing(4)
 
-        # Scan button (disabled — no backend yet)
-        self.scan_btn = QPushButton("🔍  Scan Model")
+        # Scan / Load Model button (disabled until upload)
+        self.scan_btn = QPushButton("🔍  Load Model")
         self.scan_btn.setObjectName("ScanBtn")
         self.scan_btn.setEnabled(False)
         self.scan_btn.setFixedHeight(44)
-        self.scan_btn.clicked.connect(self._on_scan_clicked)
+        self.scan_btn.clicked.connect(self.scan_requested.emit)
         layout.addWidget(self.scan_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
     # ── Public API ────────────────────────────────────────────────────
@@ -185,20 +187,18 @@ class QuickScanCard(QFrame):
 
     def show_success(self, filename: str) -> None:
         """Display a success message below the format badges."""
-        self._success_label.setText(f"✔ Model uploaded successfully.")
+        self._success_label.setText("✔ Model uploaded successfully.")
         self._success_label.show()
 
-    # ── Private helpers ───────────────────────────────────────────────
-
-    @staticmethod
-    def _on_scan_clicked() -> None:
-        """Placeholder action for the Scan button."""
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setWindowTitle("Scan Module")
-        msg.setText("Scanning module coming in Day 4.")
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg.exec()
+    def show_model_loaded(self) -> None:
+        """Update the button and label after a successful model load."""
+        self._success_label.setText("✔ Model loaded & inspected successfully.")
+        self._success_label.show()
+        self.scan_btn.setText("✔  Model Ready")
+        self.scan_btn.setEnabled(False)
+        self.scan_btn.style().unpolish(self.scan_btn)
+        self.scan_btn.style().polish(self.scan_btn)
+        self.scan_btn.update()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -320,6 +320,30 @@ class InfoPanelCard(QFrame):
 
         layout.addWidget(self._separator())
 
+        # ── Model Inspection (populated after loading) ──
+        layout.addWidget(self._section_title("MODEL INSPECTION"))
+
+        self._inspection_labels: dict[str, QLabel] = {}
+        for key in (
+            "Model Loaded",
+            "Architecture",
+            "Tokenizer Loaded",
+            "Device",
+            "Model Status",
+            "Layers",
+            "Hidden Size",
+            "Vocab Size",
+            "Context Length",
+            "Attention Heads",
+            "Parameters",
+            "Dtype",
+        ):
+            row, val_label = self._model_info_row(key)
+            self._inspection_labels[key] = val_label
+            layout.addLayout(row)
+
+        layout.addWidget(self._separator())
+
         # ── Project Information ──
         layout.addWidget(self._section_title("PROJECT INFORMATION"))
         layout.addLayout(self._kv_row("Application", "NeuroFence AI Security"))
@@ -343,8 +367,14 @@ class InfoPanelCard(QFrame):
 
         # ── System Status ──
         layout.addWidget(self._section_title("SYSTEM STATUS"))
-        layout.addLayout(self._status_row("System", "Ready", _T.success))
-        layout.addLayout(self._status_row("GPU", "Not Connected", _T.text_muted))
+        self._system_status_row_layout, self._system_status_label = self._status_row_with_ref(
+            "System", "Ready", _T.success
+        )
+        layout.addLayout(self._system_status_row_layout)
+        self._gpu_status_row_layout, self._gpu_status_label = self._status_row_with_ref(
+            "GPU", "Not Connected", _T.text_muted
+        )
+        layout.addLayout(self._gpu_status_row_layout)
         layout.addLayout(self._kv_row("Last Scan", "Never"))
 
         # Push remaining space down
@@ -371,6 +401,65 @@ class InfoPanelCard(QFrame):
 
         self._sha_label.setText(record.sha256)
         self._sha_label.setToolTip(record.sha256)
+
+    def update_inspection_info(self, result) -> None:
+        """Populate the MODEL INSPECTION section from a ModelInspectionResult."""
+        yes_style = f"color: {_T.success}; font-size: 11px; font-weight: 600;"
+        no_style = f"color: {_T.danger}; font-size: 11px; font-weight: 600;"
+
+        # Model Loaded
+        lbl = self._inspection_labels["Model Loaded"]
+        lbl.setText("YES" if result.model_loaded else "NO")
+        lbl.setStyleSheet(yes_style if result.model_loaded else no_style)
+
+        # Architecture
+        self._inspection_labels["Architecture"].setText(result.architecture)
+
+        # Tokenizer Loaded
+        lbl = self._inspection_labels["Tokenizer Loaded"]
+        lbl.setText("YES" if result.tokenizer_loaded else "NO")
+        lbl.setStyleSheet(yes_style if result.tokenizer_loaded else no_style)
+
+        # Device
+        self._inspection_labels["Device"].setText(result.device)
+
+        # Model Status
+        status_lbl = self._inspection_labels["Model Status"]
+        status_lbl.setText("Ready" if result.model_loaded else "Not Loaded")
+        status_lbl.setStyleSheet(yes_style if result.model_loaded else no_style)
+
+        # Numeric fields
+        self._inspection_labels["Layers"].setText(str(result.layers))
+        self._inspection_labels["Hidden Size"].setText(f"{result.hidden_size:,}")
+        self._inspection_labels["Vocab Size"].setText(f"{result.vocab_size:,}")
+        self._inspection_labels["Context Length"].setText(f"{result.context_length:,}")
+        self._inspection_labels["Attention Heads"].setText(str(result.attention_heads))
+
+        # Parameter count
+        if result.parameter_count is not None:
+            param_str = self._humanize_params(result.parameter_count)
+            self._inspection_labels["Parameters"].setText(param_str)
+        else:
+            self._inspection_labels["Parameters"].setText("—")
+
+        # Dtype
+        self._inspection_labels["Dtype"].setText(result.dtype)
+
+        # Update system status section
+        self._gpu_status_label.setText(result.device)
+        if result.device in ("CUDA", "MPS"):
+            self._gpu_status_label.setStyleSheet(f"color: {_T.success}; font-size: 12px; font-weight: 500;")
+
+    @staticmethod
+    def _humanize_params(count: int) -> str:
+        """Convert a parameter count to a human-readable string."""
+        if count >= 1_000_000_000:
+            return f"{count / 1_000_000_000:.2f}B"
+        if count >= 1_000_000:
+            return f"{count / 1_000_000:.2f}M"
+        if count >= 1_000:
+            return f"{count / 1_000:.1f}K"
+        return str(count)
 
     # ── Helper builders ────────────────────────────────────────────
 
@@ -430,6 +519,28 @@ class InfoPanelCard(QFrame):
         row.addSpacing(4)
         row.addWidget(v)
         return row
+
+    @staticmethod
+    def _status_row_with_ref(
+        key: str, value: str, color: str
+    ) -> tuple[QHBoxLayout, QLabel]:
+        """Like _status_row but also returns a reference to the value label."""
+        row = QHBoxLayout()
+        k = QLabel(key)
+        k.setObjectName("InfoKey")
+        dot = QLabel("●")
+        dot.setStyleSheet(f"color: {color}; font-size: 8px;")
+        v = QLabel(value)
+        v.setObjectName("InfoValue")
+        v.setStyleSheet(f"color: {color};")
+        row.addWidget(k)
+        row.addItem(
+            QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        )
+        row.addWidget(dot)
+        row.addSpacing(4)
+        row.addWidget(v)
+        return row, v
 
     @staticmethod
     def _separator() -> QFrame:

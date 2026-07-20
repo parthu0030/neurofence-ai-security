@@ -130,8 +130,9 @@ class DashboardWindow(QWidget):
     # ── Signal wiring ──────────────────────────────────────────────
 
     def _connect_signals(self) -> None:
-        """Wire child-widget signals to the upload handler."""
+        """Wire child-widget signals to the upload and scan handlers."""
         self.quick_scan.upload_requested.connect(self._handle_upload)
+        self.quick_scan.scan_requested.connect(self._handle_scan)
 
     # ── Upload handler ─────────────────────────────────────────────
 
@@ -146,6 +147,9 @@ class DashboardWindow(QWidget):
             # User cancelled the dialog or file was invalid
             return
 
+        # Stash the latest record for the scan handler
+        self._latest_record = record
+
         # Update the right-side info panel with model metadata
         self.info_panel.update_model_info(record)
 
@@ -155,6 +159,45 @@ class DashboardWindow(QWidget):
 
         # Flash a success message in the bottom status bar
         self.status_bar.set_message("✔ Model uploaded successfully.")
+
+    # ── Scan / Load handler ────────────────────────────────────────
+
+    def _handle_scan(self) -> None:
+        """Load the uploaded model and display inspection results."""
+        from database.database import DatabaseManager
+
+        # Try the stashed record first, then fall back to the DB
+        record = getattr(self, "_latest_record", None)
+        if record is None:
+            db = DatabaseManager()
+            record = db.get_latest_model()
+
+        if record is None:
+            from PyQt6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                self,
+                "No Model",
+                "Please upload a model file before loading.",
+            )
+            return
+
+        from ui.loading_dialog import LoadingDialog
+
+        dialog = LoadingDialog(record, parent=self)
+        dialog.model_loaded.connect(self._on_model_loaded)
+        dialog.exec()
+
+    def _on_model_loaded(self, result) -> None:
+        """Handle a successful model load — update all UI panels."""
+        # Update the inspection section in the info panel
+        self.info_panel.update_inspection_info(result)
+
+        # Update the quick scan card
+        self.quick_scan.show_model_loaded()
+
+        # Flash a success message in the bottom status bar
+        self.status_bar.set_message("✔ Model loaded successfully — ready for analysis.")
 
     # ── Stat cards builder ─────────────────────────────────────────
 
