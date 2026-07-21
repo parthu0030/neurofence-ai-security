@@ -78,6 +78,7 @@ class NavItem:
 NAV_ITEMS: list[NavItem] = [
     NavItem("🏠", "Dashboard", "dashboard"),
     NavItem("🧠", "Model Scanner", "scanner"),
+    NavItem("💬", "Prompt Engine", "prompt_engine"),
     NavItem("📂", "Scan History", "history"),
     NavItem("📊", "Analytics", "analytics"),
     NavItem("📄", "Reports", "reports"),

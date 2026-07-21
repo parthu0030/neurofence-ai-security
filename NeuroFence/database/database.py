@@ -1,7 +1,9 @@
 """SQLite database manager for NeuroFence AI Security.
 
 Provides a thin wrapper around ``sqlite3`` that manages the
-``uploaded_models`` table used by the model upload pipeline.
+``uploaded_models``, ``model_inspection``, and ``prompt_history``
+tables used by the model upload, inspection, and prompt execution
+pipelines.
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 from config.settings import Paths
-from database.models import ModelInspectionRecord, ModelRecord
+from database.models import ModelInspectionRecord, ModelRecord, PromptHistoryRecord
 
 # Database lives inside the database/ directory.
 _DB_PATH: Path = Paths.DATABASE / "neurofence.db"
@@ -42,7 +44,7 @@ class DatabaseManager:
     # ── Schema ───────────────────────────────────────────────────────
 
     def _create_tables(self) -> None:
-        """Ensure the ``uploaded_models`` table exists."""
+        """Ensure all application tables exist."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -74,6 +76,22 @@ class DatabaseManager:
                     dtype           TEXT    NOT NULL,
                     device          TEXT    NOT NULL,
                     loaded_at       TEXT    NOT NULL,
+                    FOREIGN KEY (model_id) REFERENCES uploaded_models(id)
+                );
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS prompt_history (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model_id        INTEGER NOT NULL,
+                    category        TEXT    NOT NULL,
+                    prompt          TEXT    NOT NULL,
+                    response        TEXT    NOT NULL,
+                    input_tokens    INTEGER NOT NULL,
+                    output_tokens   INTEGER NOT NULL,
+                    inference_time  REAL    NOT NULL,
+                    created_at      TEXT    NOT NULL,
                     FOREIGN KEY (model_id) REFERENCES uploaded_models(id)
                 );
                 """
@@ -196,3 +214,58 @@ class DatabaseManager:
             device=row["device"],
             loaded_at=row["loaded_at"],
         )
+
+    # ── Prompt history operations ─────────────────────────────────────
+
+    def insert_prompt_history(self, record: PromptHistoryRecord) -> None:
+        """Insert a prompt execution record."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO prompt_history
+                    (model_id, category, prompt, response,
+                     input_tokens, output_tokens, inference_time, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    record.model_id,
+                    record.category,
+                    record.prompt,
+                    record.response,
+                    record.input_tokens,
+                    record.output_tokens,
+                    record.inference_time,
+                    record.created_at,
+                ),
+            )
+
+    def get_prompt_history(
+        self, limit: int = 50
+    ) -> list[PromptHistoryRecord]:
+        """Return the most recent prompt executions, newest first."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, model_id, category, prompt, response,
+                       input_tokens, output_tokens, inference_time, created_at
+                FROM   prompt_history
+                ORDER  BY created_at DESC
+                LIMIT  ?;
+                """,
+                (limit,),
+            ).fetchall()
+
+        return [
+            PromptHistoryRecord(
+                id=row["id"],
+                model_id=row["model_id"],
+                category=row["category"],
+                prompt=row["prompt"],
+                response=row["response"],
+                input_tokens=row["input_tokens"],
+                output_tokens=row["output_tokens"],
+                inference_time=row["inference_time"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]

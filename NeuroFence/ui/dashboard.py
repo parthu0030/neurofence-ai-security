@@ -1,8 +1,9 @@
 """Main dashboard compositor for NeuroFence.
 
 Assembles the sidebar, header, stat cards, quick-scan panel,
-recent-activity table, right-side info panel, and bottom status bar
-into the final dashboard layout.
+recent-activity table, right-side info panel, bottom status bar,
+and the Prompt Engine panel — all navigable via the sidebar using a
+``QStackedWidget``.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QSpacerItem,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +24,7 @@ from PyQt6.QtWidgets import (
 from config.settings import ThemeColors
 from ui.cards import InfoPanelCard, QuickScanCard, RecentActivityCard, StatCard
 from ui.header import HeaderWidget
+from ui.prompt_panel import PromptPanel
 from ui.sidebar import SidebarWidget
 from ui.statusbar import StatusBarWidget
 
@@ -34,7 +37,16 @@ class DashboardWindow(QWidget):
     This widget is set as the ``centralWidget`` of the ``QMainWindow``
     in ``app.py``.  It owns the sidebar, header, content area, and
     status bar and wires them together with layout managers.
+
+    A ``QStackedWidget`` is used so the sidebar can swap between the
+    main dashboard overview and the Prompt Engine page.
     """
+
+    # Map sidebar page_key → QStackedWidget index
+    _PAGE_INDEX: dict[str, int] = {
+        "dashboard": 0,
+        "prompt_engine": 1,
+    }
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -53,7 +65,7 @@ class DashboardWindow(QWidget):
         self.sidebar = SidebarWidget()
         root.addWidget(self.sidebar)
 
-        # ── Right column: header + content + status bar ──
+        # ── Right column: header + stacked content + status bar ──
         right_col = QVBoxLayout()
         right_col.setContentsMargins(0, 0, 0, 0)
         right_col.setSpacing(0)
@@ -62,15 +74,24 @@ class DashboardWindow(QWidget):
         self.header = HeaderWidget()
         right_col.addWidget(self.header)
 
-        # Scrollable content area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        # ── Stacked content area ──
+        self._stack = QStackedWidget()
 
-        content = self._build_content_area()
-        scroll.setWidget(content)
-        right_col.addWidget(scroll, stretch=1)
+        # Page 0 — Dashboard overview (wrapped in a scroll area)
+        dash_scroll = QScrollArea()
+        dash_scroll.setWidgetResizable(True)
+        dash_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        dash_scroll.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+        )
+        dash_scroll.setWidget(self._build_content_area())
+        self._stack.addWidget(dash_scroll)  # index 0
+
+        # Page 1 — Prompt Engine
+        self.prompt_panel = PromptPanel()
+        self._stack.addWidget(self.prompt_panel)  # index 1
+
+        right_col.addWidget(self._stack, stretch=1)
 
         # Status bar
         self.status_bar = StatusBarWidget()
@@ -78,7 +99,7 @@ class DashboardWindow(QWidget):
 
         root.addLayout(right_col, stretch=1)
 
-    # ── Content area ───────────────────────────────────────────────
+    # ── Content area (dashboard overview) ──────────────────────────
 
     def _build_content_area(self) -> QWidget:
         """Construct the main content body inside the scroll area."""
@@ -133,6 +154,15 @@ class DashboardWindow(QWidget):
         """Wire child-widget signals to the upload and scan handlers."""
         self.quick_scan.upload_requested.connect(self._handle_upload)
         self.quick_scan.scan_requested.connect(self._handle_scan)
+        self.sidebar.page_changed.connect(self._on_page_changed)
+
+    # ── Sidebar navigation ─────────────────────────────────────────
+
+    def _on_page_changed(self, page_key: str) -> None:
+        """Switch the stacked widget to the requested page."""
+        index = self._PAGE_INDEX.get(page_key)
+        if index is not None:
+            self._stack.setCurrentIndex(index)
 
     # ── Upload handler ─────────────────────────────────────────────
 
@@ -199,6 +229,14 @@ class DashboardWindow(QWidget):
         # Flash a success message in the bottom status bar
         self.status_bar.set_message("✔ Model loaded successfully — ready for analysis.")
 
+        # Provide the model and tokenizer to the prompt panel
+        model_id = getattr(self._latest_record, "id", 0) or 0
+        self.prompt_panel.set_model(
+            model=result.model_ref,
+            tokenizer=result.tokenizer_ref,
+            model_id=model_id,
+        )
+
     # ── Stat cards builder ─────────────────────────────────────────
 
     @staticmethod
@@ -221,4 +259,5 @@ class DashboardWindow(QWidget):
             row.addWidget(card)
 
         return row
+
 

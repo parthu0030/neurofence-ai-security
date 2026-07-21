@@ -105,10 +105,10 @@ class ModelInspectionService:
                 tokenizer_loaded=tokenizer_loaded,
             )
 
-            # Free GPU memory after inspection
-            del model
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            # Attach live objects so the prompt engine can reuse them
+            # without a costly reload from disk.
+            result.model_ref = model
+            result.tokenizer_ref = tokenizer
 
             return result
 

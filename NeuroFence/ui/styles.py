@@ -402,3 +402,220 @@ STATUS_BAR_STYLESHEET: str = f"""
     font-weight: 500;
 }}
 """
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Prompt Engine panel
+# ═══════════════════════════════════════════════════════════════════════════
+
+PROMPT_PANEL_STYLESHEET: str = f"""
+/* ── Panel container ─────────────────────────────────────────────── */
+#PromptPanelContainer {{
+    background-color: {_T.bg_dark};
+}}
+
+/* ── Section cards ───────────────────────────────────────────────── */
+#PromptInputCard, #ResponseCard, #HistoryCard {{
+    background-color: {_T.bg_panel};
+    border: 1px solid {_T.border};
+    border-radius: 12px;
+}}
+
+/* ── Section titles ──────────────────────────────────────────────── */
+#PromptSectionTitle {{
+    color: {_T.text_primary};
+    font-size: 15px;
+    font-weight: 700;
+}}
+
+/* ── Combo boxes ─────────────────────────────────────────────────── */
+QComboBox#CategoryCombo, QComboBox#PromptCombo {{
+    background-color: {_T.bg_input};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: {_T.text_primary};
+    font-size: 13px;
+    min-width: 200px;
+}}
+QComboBox#CategoryCombo:hover, QComboBox#PromptCombo:hover {{
+    border-color: {_T.accent};
+}}
+QComboBox#CategoryCombo::drop-down, QComboBox#PromptCombo::drop-down {{
+    border: none;
+    padding-right: 8px;
+}}
+QComboBox#CategoryCombo QAbstractItemView,
+QComboBox#PromptCombo QAbstractItemView {{
+    background-color: {_T.bg_panel};
+    border: 1px solid {_T.border};
+    color: {_T.text_primary};
+    selection-background-color: {_T.accent_glow};
+    padding: 4px;
+}}
+
+/* ── Text editors ────────────────────────────────────────────────── */
+QPlainTextEdit#PromptEditor {{
+    background-color: {_T.bg_input};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: {_T.text_primary};
+    font-size: 13px;
+    font-family: "Menlo", "Courier New", monospace;
+}}
+QPlainTextEdit#PromptEditor:focus {{
+    border-color: {_T.accent};
+}}
+
+QPlainTextEdit#ResponseDisplay {{
+    background-color: {_T.bg_input};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: {_T.text_primary};
+    font-size: 13px;
+    font-family: "Menlo", "Courier New", monospace;
+}}
+
+/* ── Character counter ───────────────────────────────────────────── */
+#CharCounter {{
+    color: {_T.text_muted};
+    font-size: 11px;
+    font-family: "Menlo", "Courier New", monospace;
+}}
+#CharCounterWarn {{
+    color: {_T.warning};
+    font-size: 11px;
+    font-family: "Menlo", "Courier New", monospace;
+    font-weight: 600;
+}}
+
+/* ── Sliders ─────────────────────────────────────────────────────── */
+QSlider::groove:horizontal {{
+    border: none;
+    height: 6px;
+    background: {_T.bg_input};
+    border-radius: 3px;
+}}
+QSlider::handle:horizontal {{
+    background: {_T.accent};
+    border: none;
+    width: 16px;
+    height: 16px;
+    margin: -5px 0;
+    border-radius: 8px;
+}}
+QSlider::handle:horizontal:hover {{
+    background: {_T.accent_hover};
+}}
+QSlider::sub-page:horizontal {{
+    background: {_T.accent};
+    border-radius: 3px;
+}}
+
+#SliderLabel {{
+    color: {_T.text_secondary};
+    font-size: 12px;
+    font-weight: 500;
+}}
+#SliderValue {{
+    color: {_T.accent_light};
+    font-size: 12px;
+    font-weight: 600;
+    font-family: "Menlo", "Courier New", monospace;
+}}
+
+/* ── Run button ──────────────────────────────────────────────────── */
+QPushButton#RunPromptBtn {{
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 {_T.accent}, stop:1 {_T.accent_light}
+    );
+    color: #ffffff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 48px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}}
+QPushButton#RunPromptBtn:hover {{
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:0,
+        stop:0 {_T.accent_hover}, stop:1 {_T.accent}
+    );
+}}
+QPushButton#RunPromptBtn:disabled {{
+    background-color: {_T.bg_input};
+    color: {_T.text_muted};
+    border: 1px solid {_T.border};
+}}
+
+/* ── Statistics grid ─────────────────────────────────────────────── */
+#StatBox {{
+    background-color: {_T.bg_panel_alt};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+}}
+#StatLabel {{
+    color: {_T.text_muted};
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}}
+#StatValue {{
+    color: {_T.text_primary};
+    font-size: 16px;
+    font-weight: 700;
+}}
+#StatValueAccent {{
+    color: {_T.accent_light};
+    font-size: 16px;
+    font-weight: 700;
+}}
+#StatusSuccess {{
+    color: {_T.success};
+    font-size: 14px;
+    font-weight: 700;
+}}
+#StatusError {{
+    color: {_T.danger};
+    font-size: 14px;
+    font-weight: 700;
+}}
+
+/* ── History table ───────────────────────────────────────────────── */
+#HistoryCard QTableWidget {{
+    background-color: transparent;
+    border: none;
+    gridline-color: {_T.border};
+    font-size: 12px;
+}}
+#HistoryCard QTableWidget::item {{
+    padding: 8px 12px;
+    border-bottom: 1px solid {_T.border};
+}}
+#HistoryCard QTableWidget::item:selected {{
+    background-color: {_T.accent_glow};
+}}
+#HistoryCard QHeaderView::section {{
+    background-color: {_T.bg_panel_alt};
+    color: {_T.text_secondary};
+    border: none;
+    border-bottom: 1px solid {_T.border};
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}}
+
+/* ── Running indicator ───────────────────────────────────────────── */
+#RunningLabel {{
+    color: {_T.accent_light};
+    font-size: 13px;
+    font-weight: 600;
+}}
+"""
+

@@ -6,8 +6,9 @@ canonical shape for data flowing between the service layer and the UI.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass
@@ -79,6 +80,10 @@ class ModelInspectionResult:
     Carries everything the UI needs to display after a successful
     model load — separate from the DB record so the UI layer never
     touches ``ModelInspectionRecord`` directly.
+
+    ``model_ref`` and ``tokenizer_ref`` hold the live Transformers
+    objects so the prompt-execution engine can reuse them without
+    reloading from disk.  They are **not** persisted to the database.
     """
 
     model_name: str
@@ -93,3 +98,69 @@ class ModelInspectionResult:
     device: str
     model_loaded: bool
     tokenizer_loaded: bool
+    model_ref: Any = field(default=None, repr=False)
+    tokenizer_ref: Any = field(default=None, repr=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Prompt Execution DTOs
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class PromptHistoryRecord:
+    """Represents a row in the ``prompt_history`` table.
+
+    Attributes:
+        model_id:       Foreign key referencing ``uploaded_models.id``.
+        category:       Prompt category (Normal, Coding, Safety, …).
+        prompt:         The full prompt text sent to the model.
+        response:       The generated response text.
+        input_tokens:   Number of tokens in the prompt.
+        output_tokens:  Number of newly generated tokens.
+        inference_time: Wall-clock generation time in seconds.
+        created_at:     ISO timestamp of the execution.
+        id:             Auto-incremented primary key (``None`` before insertion).
+    """
+
+    model_id: int
+    category: str
+    prompt: str
+    response: str
+    input_tokens: int
+    output_tokens: int
+    inference_time: float
+    created_at: str
+    id: int | None = None
+
+
+@dataclass
+class PromptExecutionResult:
+    """UI-facing result returned by :class:`PromptExecutionService`.
+
+    Includes all raw data plus computed statistics so the UI never
+    has to compute anything itself.
+
+    Attributes:
+        prompt:                 The original prompt text.
+        response:               The generated response text.
+        category:               Prompt category label.
+        input_tokens:           Token count of the input.
+        output_tokens:          Token count of the generated output.
+        characters_generated:   ``len(response)``.
+        inference_time:         Wall-clock seconds for generation.
+        avg_tokens_per_second:  ``output_tokens / inference_time``.
+        status:                 ``"success"`` or ``"error"``.
+        error_message:          Human-readable error (empty on success).
+    """
+
+    prompt: str
+    response: str
+    category: str
+    input_tokens: int
+    output_tokens: int
+    characters_generated: int
+    inference_time: float
+    avg_tokens_per_second: float
+    status: str = "success"
+    error_message: str = ""
