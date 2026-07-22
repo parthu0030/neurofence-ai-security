@@ -12,7 +12,12 @@ import sqlite3
 from pathlib import Path
 
 from config.settings import Paths
-from database.models import ModelInspectionRecord, ModelRecord, PromptHistoryRecord
+from database.models import (
+    ActivationHistoryRecord,
+    ModelInspectionRecord,
+    ModelRecord,
+    PromptHistoryRecord,
+)
 
 # Database lives inside the database/ directory.
 _DB_PATH: Path = Paths.DATABASE / "neurofence.db"
@@ -93,6 +98,23 @@ class DatabaseManager:
                     inference_time  REAL    NOT NULL,
                     created_at      TEXT    NOT NULL,
                     FOREIGN KEY (model_id) REFERENCES uploaded_models(id)
+                );
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS activation_history (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    prompt_id    INTEGER NOT NULL,
+                    layer_number INTEGER NOT NULL,
+                    mean         REAL    NOT NULL,
+                    std          REAL    NOT NULL,
+                    minimum      REAL    NOT NULL,
+                    maximum      REAL    NOT NULL,
+                    norm         REAL    NOT NULL,
+                    tensor_shape TEXT    NOT NULL,
+                    created_at   TEXT    NOT NULL,
+                    FOREIGN KEY (prompt_id) REFERENCES prompt_history(id)
                 );
                 """
             )
@@ -269,3 +291,35 @@ class DatabaseManager:
             )
             for row in rows
         ]
+
+    # ── Activation history operations ─────────────────────────────────
+
+    def get_latest_prompt_id(self) -> int | None:
+        """Return the auto-incremented ID of the most recent prompt_history row."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id FROM prompt_history
+                ORDER BY id DESC
+                LIMIT 1;
+                """
+            ).fetchone()
+        return row["id"] if row else None
+
+    def insert_activation_batch(
+        self, records: list[ActivationHistoryRecord]
+    ) -> None:
+        """Bulk-insert activation summaries via the dedicated repository."""
+        from database.activation_history import ActivationHistoryRepository
+
+        repo = ActivationHistoryRepository(self._db_path)
+        repo.insert_batch(records)
+
+    def get_activation_history(
+        self, prompt_id: int
+    ) -> list[ActivationHistoryRecord]:
+        """Return activation records for a given prompt ID."""
+        from database.activation_history import ActivationHistoryRepository
+
+        repo = ActivationHistoryRepository(self._db_path)
+        return repo.get_by_prompt(prompt_id)

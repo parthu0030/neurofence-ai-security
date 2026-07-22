@@ -619,3 +619,84 @@ QPushButton#RunPromptBtn:disabled {{
 }}
 """
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Activation Tracking panel
+# ═══════════════════════════════════════════════════════════════════════════
+
+ACTIVATION_PANEL_STYLESHEET: str = f"""
+/* ── Panel container ─────────────────────────────────────────────── */
+#ActivationPanelContainer {{
+    background-color: {_T.bg_dark};
+}}
+
+/* ── Section cards ───────────────────────────────────────────────── */
+#ActivationStatusCard, #LayerTableCard, #ActivationChartCard {{
+    background-color: {_T.bg_panel};
+    border: 1px solid {_T.border};
+    border-radius: 12px;
+}}
+
+/* ── Section titles ──────────────────────────────────────────────── */
+#ActivationSectionTitle {{
+    color: {_T.text_primary};
+    font-size: 15px;
+    font-weight: 700;
+}}
+
+/* ── Status boxes ────────────────────────────────────────────────── */
+#ActivationStatBox {{
+    background-color: {_T.bg_panel_alt};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+}}
+#ActivationStatLabel {{
+    color: {_T.text_muted};
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}}
+#ActivationStatValue {{
+    color: {_T.text_primary};
+    font-size: 16px;
+    font-weight: 700;
+}}
+#ActivationStatusSuccess {{
+    color: {_T.success};
+    font-size: 14px;
+    font-weight: 700;
+}}
+#ActivationStatusError {{
+    color: {_T.danger};
+    font-size: 14px;
+    font-weight: 700;
+}}
+
+/* ── Layer statistics table ──────────────────────────────────────── */
+#LayerTableCard QTableWidget {{
+    background-color: transparent;
+    border: none;
+    gridline-color: {_T.border};
+    font-size: 12px;
+}}
+#LayerTableCard QTableWidget::item {{
+    padding: 8px 12px;
+    border-bottom: 1px solid {_T.border};
+}}
+#LayerTableCard QTableWidget::item:selected {{
+    background-color: {_T.accent_glow};
+}}
+#LayerTableCard QHeaderView::section {{
+    background-color: {_T.bg_panel_alt};
+    color: {_T.text_secondary};
+    border: none;
+    border-bottom: 1px solid {_T.border};
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}}
+"""
+
+

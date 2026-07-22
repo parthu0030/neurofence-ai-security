@@ -164,3 +164,41 @@ class PromptExecutionResult:
     avg_tokens_per_second: float
     status: str = "success"
     error_message: str = ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Activation History DTOs
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class ActivationHistoryRecord:
+    """Represents a row in the ``activation_history`` table.
+
+    Each record stores the summary statistics for one transformer layer
+    during a single prompt execution.  Raw tensors are never persisted —
+    only the scalar aggregates.
+
+    Attributes:
+        prompt_id:     Foreign key referencing ``prompt_history.id``.
+        layer_number:  Zero-based index of the transformer layer.
+        mean:          Mean activation value.
+        std:           Standard deviation.
+        minimum:       Minimum activation value.
+        maximum:       Maximum activation value.
+        norm:          L2 (Frobenius) norm.
+        tensor_shape:  String representation of the tensor shape.
+        created_at:    ISO timestamp of the capture event.
+        id:            Auto-incremented primary key (``None`` before insertion).
+    """
+
+    prompt_id: int
+    layer_number: int
+    mean: float
+    std: float
+    minimum: float
+    maximum: float
+    norm: float
+    tensor_shape: str
+    created_at: str
+    id: int | None = None

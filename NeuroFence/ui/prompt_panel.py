@@ -109,7 +109,15 @@ class PromptPanel(QWidget):
     1. Prompt Input  — category/prompt selectors, editor, params, run button
     2. Response       — generated text + statistics
     3. History        — table of past executions
+
+    Signals:
+        prompt_executed: Emitted after a successful prompt execution
+            with the :class:`PromptExecutionResult`.
     """
+
+    # Emitted after a successful inference so external consumers
+    # (e.g. DashboardWindow) can trigger activation processing.
+    prompt_executed = pyqtSignal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -232,10 +240,7 @@ class PromptPanel(QWidget):
 
         layout.addLayout(sel_row)
 
-        # Populate initial prompts
-        self._populate_prompts()
-
-        # ── Multiline editor ──
+        # ── Multiline editor ──  (must exist before _populate_prompts)
         self._editor = QPlainTextEdit()
         self._editor.setObjectName("PromptEditor")
         self._editor.setPlaceholderText("Enter your prompt here…")
@@ -307,6 +312,11 @@ class PromptPanel(QWidget):
         )
 
         layout.addLayout(run_row)
+
+        # Populate initial prompts — called last so all widgets
+        # (_editor, _char_counter, _run_btn) exist before the
+        # callback chain fires.
+        self._populate_prompts()
 
         return card
 
@@ -593,6 +603,9 @@ class PromptPanel(QWidget):
 
         # Refresh history table
         self._refresh_history()
+
+        # Notify external consumers (e.g. activation tracker)
+        self.prompt_executed.emit(result)
 
     def _on_inference_error(self, message: str) -> None:
         """Handle a fatal worker error."""

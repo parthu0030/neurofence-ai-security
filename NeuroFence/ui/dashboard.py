@@ -2,17 +2,21 @@
 
 Assembles the sidebar, header, stat cards, quick-scan panel,
 recent-activity table, right-side info panel, bottom status bar,
-and the Prompt Engine panel — all navigable via the sidebar using a
-``QStackedWidget``.
+the Prompt Engine panel, and the Activation Tracking panel — all
+navigable via the sidebar using a ``QStackedWidget``.
 """
 
 from __future__ import annotations
+
+import logging
+from datetime import datetime
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QMessageBox,
     QScrollArea,
     QSizePolicy,
     QSpacerItem,
@@ -25,9 +29,11 @@ from config.settings import ThemeColors
 from ui.cards import InfoPanelCard, QuickScanCard, RecentActivityCard, StatCard
 from ui.header import HeaderWidget
 from ui.prompt_panel import PromptPanel
+from ui.activation_panel import ActivationPanel
 from ui.sidebar import SidebarWidget
 from ui.statusbar import StatusBarWidget
 
+log = logging.getLogger(__name__)
 _T = ThemeColors()
 
 
@@ -39,17 +45,23 @@ class DashboardWindow(QWidget):
     status bar and wires them together with layout managers.
 
     A ``QStackedWidget`` is used so the sidebar can swap between the
-    main dashboard overview and the Prompt Engine page.
+    main dashboard overview, the Prompt Engine page, and the
+    Activation Tracking page.
     """
 
     # Map sidebar page_key → QStackedWidget index
     _PAGE_INDEX: dict[str, int] = {
         "dashboard": 0,
         "prompt_engine": 1,
+        "activations": 2,
     }
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+
+        # Activation tracker — initialised when a model is loaded
+        self._activation_tracker = None
+
         self._build_ui()
         self._connect_signals()
 
@@ -90,6 +102,10 @@ class DashboardWindow(QWidget):
         # Page 1 — Prompt Engine
         self.prompt_panel = PromptPanel()
         self._stack.addWidget(self.prompt_panel)  # index 1
+
+        # Page 2 — Activation Tracking
+        self.activation_panel = ActivationPanel()
+        self._stack.addWidget(self.activation_panel)  # index 2
 
         right_col.addWidget(self._stack, stretch=1)
 
@@ -156,6 +172,9 @@ class DashboardWindow(QWidget):
         self.quick_scan.scan_requested.connect(self._handle_scan)
         self.sidebar.page_changed.connect(self._on_page_changed)
 
+        # Prompt execution → activation tracking pipeline
+        self.prompt_panel.prompt_executed.connect(self._on_prompt_executed)
+
     # ── Sidebar navigation ─────────────────────────────────────────
 
     def _on_page_changed(self, page_key: str) -> None:
@@ -203,8 +222,6 @@ class DashboardWindow(QWidget):
             record = db.get_latest_model()
 
         if record is None:
-            from PyQt6.QtWidgets import QMessageBox
-
             QMessageBox.warning(
                 self,
                 "No Model",
@@ -237,6 +254,133 @@ class DashboardWindow(QWidget):
             model_id=model_id,
         )
 
+        # ── Register activation hooks ────────────────────────────────
+        self._setup_activation_tracker(result.model_ref)
+
+    # ── Activation tracking ────────────────────────────────────────
+
+    def _setup_activation_tracker(self, model) -> None:
+        """Create the activation tracker and register hooks on the model."""
+        from services.activation_tracker_service import ActivationTrackerService
+
+        # Remove old hooks if re-loading
+        if self._activation_tracker is not None:
+            self._activation_tracker.remove_hooks()
+
+        self._activation_tracker = ActivationTrackerService()
+        success = self._activation_tracker.register_hooks(model)
+
+        if success:
+            log.info(
+                "Activation hooks registered on %d layers.",
+                self._activation_tracker.layer_count,
+            )
+            self.status_bar.set_message(
+                f"✔ Activation hooks registered on "
+                f"{self._activation_tracker.layer_count} layers."
+            )
+        else:
+            log.warning("No transformer layers found for activation tracking.")
+            QMessageBox.information(
+                self,
+                "Activation Tracking",
+                "No transformer layers were detected in this model.\n\n"
+                "Activation tracking will be unavailable.",
+            )
+
+    def _on_prompt_executed(self, result) -> None:
+        """Process activations after a successful prompt execution.
+
+        This is triggered by the ``prompt_executed`` signal from the
+        :class:`PromptPanel`.  The flow is:
+
+        1. Compute activation summaries from the captured forward hooks.
+        2. Update the Activation Tracking panel UI.
+        3. Persist summaries to the ``activation_history`` table.
+        """
+        if result.status != "success":
+            return
+
+        if self._activation_tracker is None or not self._activation_tracker.has_hooks:
+            log.warning("Activation tracker not available — skipping.")
+            return
+
+        try:
+            summary = self._activation_tracker.process_activations()
+
+            if summary is None or not summary.capture_successful:
+                log.warning("Activation capture returned no data.")
+                self.status_bar.set_message(
+                    "⚠ Activation capture returned no data."
+                )
+                return
+
+            # Update the Activation Tracking panel
+            self.activation_panel.update_activation_data(summary)
+
+            # Persist to SQLite
+            self._save_activation_history(summary)
+
+            # Update status bar
+            self.status_bar.set_message(
+                f"✔ Captured activations from {summary.layers_captured} layers "
+                f"| Avg: {summary.average_activation:.6f} "
+                f"| Peak: {summary.peak_activation:.4f}"
+            )
+
+            log.info(
+                "Activation tracking complete — %d layers captured.",
+                summary.layers_captured,
+            )
+
+        except Exception as exc:
+            log.exception("Activation processing failed: %s", exc)
+            self.status_bar.set_message("✖ Activation processing failed.")
+            QMessageBox.warning(
+                self,
+                "Activation Error",
+                f"Failed to process activations:\n\n{exc}",
+            )
+
+    def _save_activation_history(self, summary) -> None:
+        """Persist activation summaries to the database."""
+        try:
+            from database.database import DatabaseManager
+            from database.models import ActivationHistoryRecord
+
+            db = DatabaseManager()
+            prompt_id = db.get_latest_prompt_id()
+
+            if prompt_id is None:
+                log.warning("No prompt_history record found — skipping activation save.")
+                return
+
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            records = [
+                ActivationHistoryRecord(
+                    prompt_id=prompt_id,
+                    layer_number=la.layer_number,
+                    mean=la.mean,
+                    std=la.std,
+                    minimum=la.min,
+                    maximum=la.max,
+                    norm=la.norm,
+                    tensor_shape=la.tensor_shape,
+                    created_at=now,
+                )
+                for la in summary.layers
+            ]
+
+            db.insert_activation_batch(records)
+            log.info(
+                "Saved %d activation records for prompt_id=%d.",
+                len(records),
+                prompt_id,
+            )
+
+        except Exception as exc:
+            log.exception("Failed to save activation history: %s", exc)
+
     # ── Stat cards builder ─────────────────────────────────────────
 
     @staticmethod
@@ -260,4 +404,11 @@ class DashboardWindow(QWidget):
 
         return row
 
+    # ── Cleanup ────────────────────────────────────────────────────
 
+    def closeEvent(self, event) -> None:
+        """Remove activation hooks when the window closes."""
+        if self._activation_tracker is not None:
+            self._activation_tracker.remove_hooks()
+            log.info("Activation hooks removed on window close.")
+        super().closeEvent(event)
