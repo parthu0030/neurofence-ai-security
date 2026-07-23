@@ -17,6 +17,8 @@ from database.models import (
     ModelInspectionRecord,
     ModelRecord,
     PromptHistoryRecord,
+    SecurityFindingRecord,
+    SecurityScanRecord,
 )
 
 # Database lives inside the database/ directory.
@@ -115,6 +117,35 @@ class DatabaseManager:
                     tensor_shape TEXT    NOT NULL,
                     created_at   TEXT    NOT NULL,
                     FOREIGN KEY (prompt_id) REFERENCES prompt_history(id)
+                );
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS security_scans (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    model_id       INTEGER NOT NULL,
+                    risk_score     REAL    NOT NULL,
+                    risk_level     TEXT    NOT NULL,
+                    findings_count INTEGER NOT NULL,
+                    prompt_tested  TEXT    NOT NULL,
+                    scanned_at     TEXT    NOT NULL,
+                    FOREIGN KEY (model_id) REFERENCES uploaded_models(id)
+                );
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS security_findings (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scan_id     INTEGER NOT NULL,
+                    title       TEXT    NOT NULL,
+                    severity    TEXT    NOT NULL,
+                    category    TEXT    NOT NULL,
+                    description TEXT    NOT NULL,
+                    remediation TEXT    NOT NULL,
+                    created_at  TEXT    NOT NULL,
+                    FOREIGN KEY (scan_id) REFERENCES security_scans(id)
                 );
                 """
             )
@@ -323,3 +354,101 @@ class DatabaseManager:
 
         repo = ActivationHistoryRepository(self._db_path)
         return repo.get_by_prompt(prompt_id)
+
+    # ── Security Scan operations ─────────────────────────────────────
+
+    def insert_security_scan(self, record: SecurityScanRecord) -> int:
+        """Insert a security scan record and return its row ID."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO security_scans
+                    (model_id, risk_score, risk_level, findings_count,
+                     prompt_tested, scanned_at)
+                VALUES (?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    record.model_id,
+                    record.risk_score,
+                    record.risk_level,
+                    record.findings_count,
+                    record.prompt_tested,
+                    record.scanned_at,
+                ),
+            )
+            return cursor.lastrowid
+
+    def insert_security_finding(self, record: SecurityFindingRecord) -> None:
+        """Insert a single security finding record."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO security_findings
+                    (scan_id, title, severity, category, description,
+                     remediation, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    record.scan_id,
+                    record.title,
+                    record.severity,
+                    record.category,
+                    record.description,
+                    record.remediation,
+                    record.created_at,
+                ),
+            )
+
+    def get_latest_scan(self) -> SecurityScanRecord | None:
+        """Return the most recent security scan record, or ``None``."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, model_id, risk_score, risk_level, findings_count,
+                       prompt_tested, scanned_at
+                FROM   security_scans
+                ORDER  BY scanned_at DESC
+                LIMIT  1;
+                """
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return SecurityScanRecord(
+            id=row["id"],
+            model_id=row["model_id"],
+            risk_score=row["risk_score"],
+            risk_level=row["risk_level"],
+            findings_count=row["findings_count"],
+            prompt_tested=row["prompt_tested"],
+            scanned_at=row["scanned_at"],
+        )
+
+    def get_scan_findings(self, scan_id: int) -> list[SecurityFindingRecord]:
+        """Return all security findings associated with a scan ID."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, scan_id, title, severity, category, description,
+                       remediation, created_at
+                FROM   security_findings
+                WHERE  scan_id = ?
+                ORDER  BY id ASC;
+                """,
+                (scan_id,),
+            ).fetchall()
+
+        return [
+            SecurityFindingRecord(
+                id=row["id"],
+                scan_id=row["scan_id"],
+                title=row["title"],
+                severity=row["severity"],
+                category=row["category"],
+                description=row["description"],
+                remediation=row["remediation"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]

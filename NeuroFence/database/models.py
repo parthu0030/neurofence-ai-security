@@ -202,3 +202,57 @@ class ActivationHistoryRecord:
     tensor_shape: str
     created_at: str
     id: int | None = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Security Scan & Findings DTOs
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class SecurityScanRecord:
+    """Represents a row in the ``security_scans`` table.
+
+    Attributes:
+        model_id:         Foreign key referencing ``uploaded_models.id``.
+        risk_score:       Overall model security risk score (0.0 to 100.0).
+        risk_level:       Risk category label ("Clean", "Low", "Medium", "High", "Critical").
+        findings_count:   Total security findings identified.
+        prompt_tested:    Prompt string executed during the scan.
+        scanned_at:       ISO timestamp of the scan execution.
+        id:               Auto-incremented primary key (``None`` before insertion).
+    """
+
+    model_id: int
+    risk_score: float
+    risk_level: str
+    findings_count: int
+    prompt_tested: str
+    scanned_at: str
+    id: int | None = None
+
+
+@dataclass
+class SecurityFindingRecord:
+    """Represents a row in the ``security_findings`` table.
+
+    Attributes:
+        scan_id:          Foreign key referencing ``security_scans.id``.
+        title:            Short title of the security vulnerability or finding.
+        severity:         Severity level ("Critical", "High", "Medium", "Low", "Info").
+        category:         Vulnerability category (e.g., "Behavioral Anomaly", "Activation Spike").
+        description:      Detailed description of the observation.
+        remediation:      Suggested remediation guidance.
+        created_at:       ISO timestamp of finding creation.
+        id:               Auto-incremented primary key (``None`` before insertion).
+    """
+
+    scan_id: int
+    title: str
+    severity: str
+    category: str
+    description: str
+    remediation: str
+    created_at: str
+    id: int | None = None
+
