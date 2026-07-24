@@ -17,6 +17,7 @@ from database.models import (
     ModelInspectionRecord,
     ModelRecord,
     PromptHistoryRecord,
+    ScanSummaryRecord,
     SecurityFindingRecord,
     SecurityScanRecord,
 )
@@ -149,6 +150,9 @@ class DatabaseManager:
                 );
                 """
             )
+            from database.scan_summary import ScanSummaryRepository
+
+            ScanSummaryRepository(self._db_path).create_table()
 
     # ── Write operations ─────────────────────────────────────────────
 
@@ -452,3 +456,41 @@ class DatabaseManager:
             )
             for row in rows
         ]
+
+    # ── Scan Summary operations ──────────────────────────────────────
+
+    def insert_scan_summary(self, record: ScanSummaryRecord) -> int:
+        """Insert a scan summary record and return its row ID."""
+        from database.scan_summary import ScanSummaryRepository
+
+        repo = ScanSummaryRepository(self._db_path)
+        return repo.insert(record)
+
+    def get_all_scan_summaries(self) -> list[ScanSummaryRecord]:
+        """Return all scan summary records ordered newest first."""
+        from database.scan_summary import ScanSummaryRepository
+
+        repo = ScanSummaryRepository(self._db_path)
+        return repo.get_all()
+
+    def get_scan_summaries_with_model_info(self) -> list[dict]:
+        """Return scan summaries joined with model filename and architecture."""
+        from database.scan_summary import ScanSummaryRepository
+
+        repo = ScanSummaryRepository(self._db_path)
+        return repo.get_summaries_with_model_info()
+
+    def get_scan_summary_by_id(self, scan_id: int) -> ScanSummaryRecord | None:
+        """Return a scan summary record by primary key."""
+        from database.scan_summary import ScanSummaryRepository
+
+        repo = ScanSummaryRepository(self._db_path)
+        return repo.get_by_id(scan_id)
+
+    def delete_scan_summary(self, scan_id: int) -> bool:
+        """Delete a scan summary record by primary key."""
+        from database.scan_summary import ScanSummaryRepository
+
+        repo = ScanSummaryRepository(self._db_path)
+        return repo.delete(scan_id)
+

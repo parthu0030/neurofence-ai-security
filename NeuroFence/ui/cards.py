@@ -216,7 +216,7 @@ _PLACEHOLDER_ROWS: list[tuple[str, str, str, str]] = [
 
 
 class RecentActivityCard(QFrame):
-    """Table card showing recent model scan activity."""
+    """Table card showing recent model scan activity loaded from SQLite."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -227,48 +227,182 @@ class RecentActivityCard(QFrame):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(12)
 
-        title = QLabel("📋  Recent Activity")
+        header_row = QHBoxLayout()
+        title = QLabel("📋  Recent Scans")
         title.setObjectName("ActivityTitle")
-        layout.addWidget(title)
+        header_row.addWidget(title)
 
-        self._table = self._build_table()
-        layout.addWidget(self._table)
+        header_row.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+        layout.addLayout(header_row)
 
-    @staticmethod
-    def _build_table() -> QTableWidget:
-        headers = ["Time", "Model", "Status", "Risk"]
-        table = QTableWidget(len(_PLACEHOLDER_ROWS), len(headers))
-        table.setHorizontalHeaderLabels(headers)
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setShowGrid(False)
-        table.setAlternatingRowColors(False)
+        self._table = QTableWidget()
+        self._table.setColumnCount(4)
+        self._table.setHorizontalHeaderLabels(["Time", "Model", "Status", "Score"])
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._table.setShowGrid(False)
+        self._table.setAlternatingRowColors(False)
+        self._table.setMinimumHeight(180)
 
-        # Stretch columns proportionally
-        h_header = table.horizontalHeader()
+        h_header = self._table.horizontalHeader()
         h_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         h_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         h_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         h_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Populate rows
-        risk_colors = {
-            "Low": _T.success,
-            "Medium": _T.warning,
-            "Critical": _T.danger,
-        }
-        for row_idx, (time, model, status, risk) in enumerate(_PLACEHOLDER_ROWS):
-            for col_idx, text in enumerate((time, model, status, risk)):
-                item = QTableWidgetItem(text)
-                item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-                if col_idx == 3:  # Risk column — colour-code
-                    from PyQt6.QtGui import QColor
-                    item.setForeground(QColor(risk_colors.get(risk, _T.text_primary)))
-                table.setItem(row_idx, col_idx, item)
+        layout.addWidget(self._table)
+        self.refresh_scans()
 
-        table.setMinimumHeight(200)
-        return table
+    def refresh_scans(self) -> None:
+        """Fetch latest scans from database and update table rows."""
+        from services.scan_history_service import ScanHistoryService
+        from PyQt6.QtGui import QColor
+
+        service = ScanHistoryService()
+        scans = service.get_all_scans()[:5]  # Top 5 recent scans
+
+        if not scans:
+            # Fallback to placeholder rows if DB has no scans yet
+            rows_data = _PLACEHOLDER_ROWS
+            self._table.setRowCount(len(rows_data))
+            for r_idx, (t, m, s, r) in enumerate(rows_data):
+                for c_idx, val in enumerate((t, m, s, r)):
+                    item = QTableWidgetItem(val)
+                    item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                    self._table.setItem(r_idx, c_idx, item)
+            return
+
+        self._table.setRowCount(len(scans))
+        risk_colors = {
+            "Clean": _T.success,
+            "Low Risk": _T.success,
+            "Medium Risk": _T.warning,
+            "High Risk": _T.danger,
+            "Critical Risk": _T.danger,
+        }
+
+        for r_idx, scan in enumerate(scans):
+            t_str = str(scan.get("scan_date", ""))[:16]
+            m_str = str(scan.get("filename", "Unknown"))
+            st_str = str(scan.get("overall_status", "Clean"))
+            score = float(scan.get("security_score", 0.0))
+
+            items = [
+                QTableWidgetItem(t_str),
+                QTableWidgetItem(m_str),
+                QTableWidgetItem(st_str),
+                QTableWidgetItem(f"{score:.1f}"),
+            ]
+
+            items[2].setForeground(QColor(risk_colors.get(st_str, _T.text_primary)))
+            items[3].setForeground(QColor(_T.success if score >= 80 else (_T.warning if score >= 60 else _T.danger)))
+
+            for c_idx, item in enumerate(items):
+                item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+                self._table.setItem(r_idx, c_idx, item)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Scan Highlights & Quick Compare Card
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ScanHighlightsCard(QFrame):
+    """Card displaying Latest Scan, Best Scan, Worst Scan, and Quick Compare trigger."""
+
+    quick_compare_requested = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("ActivityCard")
+        self.setStyleSheet(ACTIVITY_STYLESHEET)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        title = QLabel("🏆  Scan Highlights & Quick Compare")
+        title.setObjectName("ActivityTitle")
+        layout.addWidget(title)
+
+        grid = QGridLayout()
+        grid.setSpacing(10)
+
+        # Labels
+        grid.addWidget(self._make_header("Metric"), 0, 0)
+        grid.addWidget(self._make_header("Model"), 0, 1)
+        grid.addWidget(self._make_header("Score"), 0, 2)
+
+        self.latest_model = QLabel("—")
+        self.latest_score = QLabel("—")
+        self.best_model = QLabel("—")
+        self.best_score = QLabel("—")
+        self.worst_model = QLabel("—")
+        self.worst_score = QLabel("—")
+
+        grid.addWidget(QLabel("🕒 Latest Scan:"), 1, 0)
+        grid.addWidget(self.latest_model, 1, 1)
+        grid.addWidget(self.latest_score, 1, 2)
+
+        grid.addWidget(QLabel("🌟 Best Scan:"), 2, 0)
+        grid.addWidget(self.best_model, 2, 1)
+        grid.addWidget(self.best_score, 2, 2)
+
+        grid.addWidget(QLabel("⚠️ Worst Scan:"), 3, 0)
+        grid.addWidget(self.worst_model, 3, 1)
+        grid.addWidget(self.worst_score, 3, 2)
+
+        layout.addLayout(grid)
+
+        # Quick Compare Button
+        self.compare_btn = QPushButton("⚔️  Quick Compare Scans")
+        self.compare_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.compare_btn.setStyleSheet(f"background-color: {_T.accent}; color: #ffffff; border: none; border-radius: 8px; padding: 10px; font-weight: 700; margin-top: 6px;")
+        self.compare_btn.clicked.connect(self.quick_compare_requested.emit)
+        layout.addWidget(self.compare_btn)
+
+        self.refresh_highlights()
+
+    @staticmethod
+    def _make_header(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(f"color: {_T.text_muted}; font-size: 11px; font-weight: 700; text-transform: uppercase;")
+        return lbl
+
+    def refresh_highlights(self) -> None:
+        """Fetch scans and update Latest, Best, and Worst cards."""
+        from services.scan_history_service import ScanHistoryService
+
+        service = ScanHistoryService()
+        scans = service.get_all_scans()
+
+        if not scans:
+            self.latest_model.setText("No Scans")
+            self.latest_score.setText("—")
+            self.best_model.setText("No Scans")
+            self.best_score.setText("—")
+            self.worst_model.setText("No Scans")
+            self.worst_score.setText("—")
+            return
+
+        # Latest scan (first item as get_all_scans orders newest first)
+        latest = scans[0]
+        self.latest_model.setText(str(latest.get("filename", "Unknown")))
+        self.latest_score.setText(f"{float(latest.get('security_score', 0)):.1f}")
+        self.latest_score.setStyleSheet(f"color: {_T.accent_light}; font-weight: 700;")
+
+        # Best scan (highest score)
+        best = max(scans, key=lambda s: float(s.get("security_score", 0)))
+        self.best_model.setText(str(best.get("filename", "Unknown")))
+        self.best_score.setText(f"{float(best.get('security_score', 0)):.1f}")
+        self.best_score.setStyleSheet(f"color: {_T.success}; font-weight: 700;")
+
+        # Worst scan (lowest score)
+        worst = min(scans, key=lambda s: float(s.get("security_score", 0)))
+        self.worst_model.setText(str(worst.get("filename", "Unknown")))
+        self.worst_score.setText(f"{float(worst.get('security_score', 0)):.1f}")
+        self.worst_score.setStyleSheet(f"color: {_T.danger}; font-weight: 700;")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

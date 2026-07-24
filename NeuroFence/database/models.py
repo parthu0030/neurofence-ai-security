@@ -256,3 +256,44 @@ class SecurityFindingRecord:
     created_at: str
     id: int | None = None
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Scan Summary DTO
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class ScanSummaryRecord:
+    """Represents a row in the ``scan_summary`` table.
+
+    Attributes:
+        model_id:           Foreign key referencing ``uploaded_models.id``.
+        scan_date:          ISO timestamp of the scan execution.
+        security_score:     Overall model security score (0.0 to 100.0, where 100 is fully secure).
+        overall_status:     Status label ("Clean", "Low Risk", "Medium Risk", "High Risk", "Critical Risk").
+        critical_count:     Count of critical severity findings.
+        high_count:         Count of high severity findings.
+        medium_count:       Count of medium severity findings.
+        low_count:          Count of low severity findings.
+        average_activation: Mean activation magnitude recorded across layers.
+        peak_activation:    Maximum activation magnitude recorded across layers.
+        execution_time:     Total scan run time in seconds.
+        sha256:             SHA256 fingerprint of the scanned model.
+        id:                 Auto-incremented primary key (``None`` before insertion).
+    """
+
+    model_id: int
+    scan_date: str
+    security_score: float
+    overall_status: str
+    critical_count: int
+    high_count: int
+    medium_count: int
+    low_count: int
+    average_activation: float
+    peak_activation: float
+    execution_time: float
+    sha256: str
+    id: int | None = None
+
+

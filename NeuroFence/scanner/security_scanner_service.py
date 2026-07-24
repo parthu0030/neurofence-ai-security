@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+import time
 from database.database import DatabaseManager
 from database.models import ModelRecord, SecurityFindingRecord, SecurityScanRecord
 from scanner.anomaly_detector import AnomalyDetector
@@ -29,6 +30,7 @@ from scanner.behavior_analyzer import BehaviorAnalyzer
 from scanner.findings_generator import FindingsGenerator, ScanResult
 from services.activation_tracker_service import ActivationTrackerService
 from services.prompt_execution_service import GenerationParams, PromptExecutionService
+from services.scan_history_service import ScanHistoryService
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +57,7 @@ class SecurityScannerService:
         self._behavior_analyzer = BehaviorAnalyzer()
         self._anomaly_detector = AnomalyDetector()
         self._findings_generator = FindingsGenerator()
+        self._history_service = ScanHistoryService(self._db)
 
     def run_security_scan(
         self,
@@ -80,9 +83,11 @@ class SecurityScannerService:
             A populated :class:`ScanResult` containing risk scores and findings.
         """
         log.info("Starting security scan for prompt: '%s'", prompt[:50])
+        start_time = time.time()
 
         # ── Step 1 & 2: Model & Tokenizer check ───────────────────────
         model_id = model_record.id if model_record and model_record.id else 1
+        sha256_fp = model_record.sha256 if model_record and model_record.sha256 else ""
 
         # ── Step 3 & 4: Hook registration & Prompt Execution ─────────
         hooks_registered = self._activation_tracker.register_hooks(model)
@@ -124,18 +129,29 @@ class SecurityScannerService:
             anomalies=anomalies,
         )
 
+        elapsed_time = round(time.time() - start_time, 3)
+
+        # Extract activation stats
+        avg_act = getattr(activation_summary, "average_activation", 0.0) if activation_summary else 0.0
+        peak_act = getattr(activation_summary, "peak_activation", 0.0) if activation_summary else 0.0
+
         # ── Persist to SQLite ─────────────────────────────────────────
         self._persist_scan(
             model_id=model_id,
             prompt_tested=prompt,
             scan_result=scan_result,
+            execution_time=elapsed_time,
+            average_activation=avg_act,
+            peak_activation=peak_act,
+            sha256=sha256_fp,
         )
 
         log.info(
-            "Security scan complete — Risk Score: %.1f%% (%s), Findings: %d",
+            "Security scan complete — Risk Score: %.1f%% (%s), Findings: %d, Time: %.3fs",
             scan_result.overall_risk_score,
             scan_result.risk_level,
             len(scan_result.findings),
+            elapsed_time,
         )
 
         return scan_result
@@ -147,8 +163,12 @@ class SecurityScannerService:
         model_id: int,
         prompt_tested: str,
         scan_result: ScanResult,
+        execution_time: float = 0.0,
+        average_activation: float = 0.0,
+        peak_activation: float = 0.0,
+        sha256: str = "",
     ) -> int | None:
-        """Save security scan record and findings to SQLite."""
+        """Save security scan record, findings, and summary to SQLite."""
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         scan_record = SecurityScanRecord(
@@ -163,7 +183,22 @@ class SecurityScannerService:
         try:
             scan_id = self._db.insert_security_scan(scan_record)
 
+            critical_c = 0
+            high_c = 0
+            med_c = 0
+            low_c = 0
+
             for finding in scan_result.findings:
+                sev = str(finding.severity).lower()
+                if "critical" in sev:
+                    critical_c += 1
+                elif "high" in sev:
+                    high_c += 1
+                elif "med" in sev:
+                    med_c += 1
+                else:
+                    low_c += 1
+
                 finding_record = SecurityFindingRecord(
                     scan_id=scan_id,
                     title=finding.title,
@@ -175,8 +210,29 @@ class SecurityScannerService:
                 )
                 self._db.insert_security_finding(finding_record)
 
+            # Calculate Security Score (100 - risk_score)
+            sec_score = max(0.0, min(100.0, 100.0 - scan_result.overall_risk_score))
+            overall_status = f"{scan_result.risk_level} Risk" if scan_result.risk_level != "Clean" else "Clean"
+
+            # Store in scan_summary table
+            self._history_service.store_scan(
+                model_id=model_id,
+                scan_date=now,
+                security_score=sec_score,
+                overall_status=overall_status,
+                critical_count=critical_c,
+                high_count=high_c,
+                medium_count=med_c,
+                low_count=low_c,
+                average_activation=average_activation,
+                peak_activation=peak_activation,
+                execution_time=execution_time,
+                sha256=sha256,
+            )
+
             return scan_id
 
         except Exception as exc:
             log.error("Failed to persist security scan to database: %s", exc)
             return None
+

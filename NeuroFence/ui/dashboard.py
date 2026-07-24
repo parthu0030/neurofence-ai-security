@@ -26,10 +26,12 @@ from PyQt6.QtWidgets import (
 )
 
 from config.settings import ThemeColors
-from ui.cards import InfoPanelCard, QuickScanCard, RecentActivityCard, StatCard
+from ui.cards import InfoPanelCard, QuickScanCard, RecentActivityCard, ScanHighlightsCard, StatCard
 from ui.header import HeaderWidget
 from ui.prompt_panel import PromptPanel
 from ui.activation_panel import ActivationPanel
+from ui.history_page import ScanHistoryPage
+from ui.comparison_page import ComparisonPage
 from ui.sidebar import SidebarWidget
 from ui.statusbar import StatusBarWidget
 
@@ -45,8 +47,8 @@ class DashboardWindow(QWidget):
     status bar and wires them together with layout managers.
 
     A ``QStackedWidget`` is used so the sidebar can swap between the
-    main dashboard overview, the Prompt Engine page, and the
-    Activation Tracking page.
+    main dashboard overview, Prompt Engine, Activation Tracking, Scan History,
+    and Multi-Scan Comparison pages.
     """
 
     # Map sidebar page_key → QStackedWidget index
@@ -54,6 +56,8 @@ class DashboardWindow(QWidget):
         "dashboard": 0,
         "prompt_engine": 1,
         "activations": 2,
+        "history": 3,
+        "comparison": 4,
     }
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -107,6 +111,14 @@ class DashboardWindow(QWidget):
         self.activation_panel = ActivationPanel()
         self._stack.addWidget(self.activation_panel)  # index 2
 
+        # Page 3 — Scan History
+        self.history_page = ScanHistoryPage()
+        self._stack.addWidget(self.history_page)  # index 3
+
+        # Page 4 — Multi-Scan Comparison
+        self.comparison_page = ComparisonPage()
+        self._stack.addWidget(self.comparison_page)  # index 4
+
         right_col.addWidget(self._stack, stretch=1)
 
         # Status bar
@@ -126,7 +138,7 @@ class DashboardWindow(QWidget):
         outer.setContentsMargins(24, 20, 24, 20)
         outer.setSpacing(20)
 
-        # ── Centre column (stat cards + quick scan + activity) ──
+        # ── Centre column (stat cards + quick scan + activity + highlights) ──
         centre = QVBoxLayout()
         centre.setSpacing(20)
 
@@ -150,6 +162,10 @@ class DashboardWindow(QWidget):
         mid_row.addWidget(self.activity, stretch=1)
 
         centre.addLayout(mid_row)
+
+        # Scan Highlights & Quick Compare section
+        self.highlights_card = ScanHighlightsCard()
+        centre.addWidget(self.highlights_card)
 
         # Stretch remaining vertical space
         centre.addItem(
@@ -175,13 +191,40 @@ class DashboardWindow(QWidget):
         # Prompt execution → activation tracking pipeline
         self.prompt_panel.prompt_executed.connect(self._on_prompt_executed)
 
-    # ── Sidebar navigation ─────────────────────────────────────────
+        # Scan History → Multi-Scan Comparison pipeline
+        self.history_page.compare_requested.connect(self._on_compare_scans_requested)
+
+        # Dashboard Highlights Quick Compare trigger
+        self.highlights_card.quick_compare_requested.connect(self._on_quick_compare_clicked)
+
+    # ── Navigation handlers ────────────────────────────────────────
 
     def _on_page_changed(self, page_key: str) -> None:
-        """Switch the stacked widget to the requested page."""
+        """Switch the stacked widget to the requested page and refresh data."""
         index = self._PAGE_INDEX.get(page_key)
         if index is not None:
             self._stack.setCurrentIndex(index)
+
+            # Refresh dynamic page contents
+            if page_key == "history":
+                self.history_page.refresh_data()
+            elif page_key == "comparison":
+                self.comparison_page.refresh_scans_list()
+            elif page_key == "dashboard":
+                self.activity.refresh_scans()
+                self.highlights_card.refresh_highlights()
+
+    def _on_compare_scans_requested(self, scan_id_a: int, scan_id_b: int) -> None:
+        """Switch to Comparison page and load specified scan comparison."""
+        self._stack.setCurrentIndex(self._PAGE_INDEX["comparison"])
+        self.sidebar._on_nav_click("comparison")
+        self.comparison_page.load_comparison(scan_id_a, scan_id_b)
+
+    def _on_quick_compare_clicked(self) -> None:
+        """Navigate to comparison page from dashboard Quick Compare button."""
+        self._stack.setCurrentIndex(self._PAGE_INDEX["comparison"])
+        self.sidebar._on_nav_click("comparison")
+        self.comparison_page.refresh_scans_list()
 
     # ── Upload handler ─────────────────────────────────────────────
 

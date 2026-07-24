@@ -81,6 +81,7 @@ NAV_ITEMS: list[NavItem] = [
     NavItem("💬", "Prompt Engine", "prompt_engine"),
     NavItem("⚡", "Activations", "activations"),
     NavItem("📂", "Scan History", "history"),
+    NavItem("⚔️", "Scan Compare", "comparison"),
     NavItem("📊", "Analytics", "analytics"),
     NavItem("📄", "Reports", "reports"),
     NavItem("⚙", "Settings", "settings"),

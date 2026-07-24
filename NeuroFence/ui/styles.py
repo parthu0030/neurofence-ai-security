@@ -700,3 +700,108 @@ ACTIVATION_PANEL_STYLESHEET: str = f"""
 """
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  Scan History & Comparison pages
+# ═══════════════════════════════════════════════════════════════════════════
+
+HISTORY_STYLESHEET: str = f"""
+#HistoryPanelContainer {{
+    background-color: {_T.bg_dark};
+}}
+#HistoryCard, #HistoryChartCard {{
+    background-color: {_T.bg_panel};
+    border: 1px solid {_T.border};
+    border-radius: 12px;
+}}
+#HistorySectionTitle {{
+    color: {_T.text_primary};
+    font-size: 16px;
+    font-weight: 700;
+}}
+QLineEdit#HistorySearchInput {{
+    background-color: {_T.bg_input};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+    padding: 8px 14px;
+    color: {_T.text_primary};
+    font-size: 13px;
+    min-width: 220px;
+}}
+QLineEdit#HistorySearchInput:focus {{
+    border-color: {_T.accent};
+}}
+QComboBox#HistoryFilterCombo, QComboBox#HistorySortCombo {{
+    background-color: {_T.bg_input};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: {_T.text_primary};
+    font-size: 12px;
+    min-width: 140px;
+}}
+QTableWidget#ScanHistoryTable {{
+    background-color: transparent;
+    border: none;
+    gridline-color: {_T.border};
+    font-size: 12px;
+}}
+QTableWidget#ScanHistoryTable::item {{
+    padding: 10px 12px;
+    border-bottom: 1px solid {_T.border};
+}}
+QTableWidget#ScanHistoryTable::item:selected {{
+    background-color: {_T.accent_glow};
+}}
+"""
+
+COMPARISON_STYLESHEET: str = f"""
+#ComparisonPanelContainer {{
+    background-color: {_T.bg_dark};
+}}
+#ComparisonCard, #ComparisonSelectorCard {{
+    background-color: {_T.bg_panel};
+    border: 1px solid {_T.border};
+    border-radius: 12px;
+}}
+#ComparisonTitle {{
+    color: {_T.text_primary};
+    font-size: 16px;
+    font-weight: 700;
+}}
+QComboBox#ScanSelectorCombo {{
+    background-color: {_T.bg_input};
+    border: 1px solid {_T.border};
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: {_T.text_primary};
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 280px;
+}}
+QPushButton#CompareBtn {{
+    background-color: {_T.accent};
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 13px;
+    font-weight: 700;
+}}
+QPushButton#CompareBtn:hover {{
+    background-color: {_T.accent_hover};
+}}
+#VerdictBox {{
+    background-color: {_T.bg_panel_alt};
+    border: 1px solid {_T.border_light};
+    border-radius: 8px;
+    padding: 12px 16px;
+}}
+#VerdictText {{
+    color: {_T.accent_light};
+    font-size: 13px;
+    font-weight: 600;
+}}
+"""
+
+
+
